@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cashapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - cashcraft-postgres:/var/lib/postgresql/data
+      - ./ledger/migrations/00001_create_ledger_tables.up.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cashapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ledger:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/cashapp?sslmode=disable
+      REDIS_ADDR: redis:6379
+      REDIS_DB: 0
+      LEDGER_LISTEN_ADDR: :9090
+    command: ["/app/ledger"]
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      ledger:
+        condition: service_started
+    environment:
+      LEDGER_GRPC_ADDR: ledger:9090
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      REQUEST_TIMEOUT: 5s
+    command: ["/app/gateway"]
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  cashcraft-postgres:

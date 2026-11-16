@@ -1,0 +1,7 @@
+*.exe
+*.test
+.git.from-homework-07/
+.idea/
+.vscode/
+cover.out
+cover.html
